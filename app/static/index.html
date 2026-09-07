@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e8a62"><meta name="mobile-web-app-capable" content="yes">
+<title>SitBus — 지금 더 나은 버스</title>
+<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/static/icon.svg"><link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<header><a class="brand" href="/"><b>S</b><span>SitBus<small>Seat-aware bus choice</small></span></a><div class="actions"><span id="modeBadge">확인 중</span><button id="installApp" class="ghost hidden">홈 화면 설치</button><button id="openLiveSetup" class="ghost">Live 연결</button></div></header>
+<main>
+<section class="hero"><p class="eyebrow">BUS DECISION SYSTEM</p><h1>가장 빨리 오는 버스보다<br><em>지금 나에게 더 나은 버스.</em></h1><p>대기시간, 착석 가능성, 이동시간과 환승을 함께 비교합니다.</p></section>
+<section class="search card"><label>출발 정류장<div class="auto"><input id="originInput" placeholder="예: 정릉" autocomplete="off"><div id="originSuggestions" class="suggestions hidden"></div></div></label><span class="arrow">→</span><label>도착 정류장<div class="auto"><input id="destinationInput" placeholder="예: 종로5가" autocomplete="off"><div id="destinationSuggestions" class="suggestions hidden"></div></div></label><div class="prefs"><button class="chip active" data-pref="balanced">균형</button><button class="chip" data-pref="seat">앉기 우선</button><button class="chip" data-pref="fast">빠르게</button></div><button id="searchButton" class="primary">추천 버스 찾기 →</button><p id="modeHint" class="hint"></p></section>
+<section id="results" class="hidden"><div class="title-row"><div><p class="eyebrow">BEST CHOICE</p><h2>지금 탈 버스</h2></div><button id="refreshButton" class="text">다시 계산</button></div><div id="summary" class="summary"></div><div id="busCards" class="bus-list"></div></section>
+<section class="how"><article><b>01</b><h3>현재 상태</h3><p>실시간 위치와 혼잡도를 읽습니다.</p></article><article><b>02</b><h3>도착 상태</h3><p>시간대별 승하차로 탑승 시점을 추정합니다.</p></article><article><b>03</b><h3>선택 가치</h3><p>기다림·이동·서있기·환승 비용을 비교합니다.</p></article></section>
+</main>
+<dialog id="liveSetupDialog"><div class="dialog"><div class="dialog-head"><div><p class="eyebrow">LIVE SETUP</p><h2>서울 실데이터 연결</h2></div><button id="closeSetup" class="close">×</button></div><div id="setupOverall" class="statusbox">상태 확인 중</div><section class="setup"><div class="setup-title"><b>1. 서울 버스 API 키</b><span id="apiSetupState">미연결</span></div><input id="apiKeyInput" type="password" placeholder="ServiceKey 입력"><button id="verifyApiKey" class="secondary">키 검증 후 연결</button><small>키는 현재 서버 프로세스 메모리에만 적용됩니다.</small></section><section class="setup"><div class="setup-title"><b>2. 시간대별 승하차 CSV</b><span id="csvSetupState">미연결</span></div><a id="datasetLink" target="_blank" rel="noopener">공식 최신 CSV 페이지 열기 ↗</a><input id="csvFileInput" type="file" accept=".csv,text/csv"><button id="uploadCsv" class="secondary">CSV 업로드·검증</button><small id="csvMeta"></small></section><p id="setupMessage" class="hint"></p></div></dialog>
+<script src="/static/app.js"></script>
+</body></html>
