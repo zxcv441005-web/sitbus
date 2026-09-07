@@ -1,5 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
+from urllib.parse import unquote
 import shutil
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.responses import FileResponse
@@ -9,7 +10,7 @@ from .config import settings
 from .service import SeatService
 from .decision import BusOption, DecisionPreferences, choose_best
 
-app = FastAPI(title='SitBus', version='1.4.1')
+app = FastAPI(title='SitBus', version='1.4.2')
 svc = SeatService()
 STATIC_DIR = Path(__file__).resolve().parent / 'static'
 app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
@@ -68,7 +69,7 @@ def service_worker():
 
 @app.get('/api/info')
 def api_info():
-    return {'service':'SitBus','version':'1.4.1','live_ready':svc.runtime_live_status()['live_ready'],'docs':'/docs'}
+    return {'service':'SitBus','version':'1.4.2','live_ready':svc.runtime_live_status()['live_ready'],'docs':'/docs'}
 
 @app.get('/health')
 def health():
@@ -85,7 +86,8 @@ def setup_status():
 def setup_api_key(req: ApiKeySetupRequest):
     old = svc.api.api_key
     try:
-        svc.set_runtime_api_key(req.api_key)
+        normalized_key = unquote(req.api_key.strip())
+        svc.set_runtime_api_key(normalized_key)
         if req.verify:
             svc.api.search_stations('서울역')
         return {'verified':bool(req.verify), **svc.runtime_live_status()}
