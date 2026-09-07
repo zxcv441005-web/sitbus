@@ -10,7 +10,7 @@ from .config import settings
 from .service import SeatService
 from .decision import BusOption, DecisionPreferences, choose_best
 
-app = FastAPI(title='SitBus', version='1.4.3')
+app = FastAPI(title='SitBus', version='1.4.4')
 svc = SeatService()
 STATIC_DIR = Path(__file__).resolve().parent / 'static'
 app.mount('/static', StaticFiles(directory=STATIC_DIR), name='static')
@@ -92,8 +92,9 @@ def service_worker():
 def api_info():
     return {
         'service': 'SitBus',
-        'version': '1.4.3',
+        'version': '1.4.4',
         'live_ready': svc.runtime_live_status()['live_ready'],
+        'location_enabled': True,
         'docs': '/docs',
     }
 
@@ -157,6 +158,22 @@ async def setup_historical_csv(file: UploadFile = File(...)):
 def station_search(q: str = Query(min_length=1)):
     try:
         return [x.__dict__ for x in svc.discovery.station_search(q)]
+    except Exception as e:
+        raise HTTPException(503, str(e))
+
+
+@app.get('/stations/nearby')
+def station_nearby(
+    lat: float = Query(ge=33.0, le=39.0),
+    lon: float = Query(ge=124.0, le=132.0),
+    radius: int = Query(default=500, ge=50, le=1000),
+):
+    try:
+        return svc.api.nearby_stations(
+            longitude=lon,
+            latitude=lat,
+            radius=radius,
+        )
     except Exception as e:
         raise HTTPException(503, str(e))
 
