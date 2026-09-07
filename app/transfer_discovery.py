@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from math import asin, cos, radians, sin, sqrt
 from zoneinfo import ZoneInfo
 
 from .config import settings
@@ -14,6 +15,8 @@ from .predictor import (
 )
 
 SEOUL_TZ = ZoneInfo("Asia/Seoul")
+MAX_TRANSFER_WALK_M = 250.0
+WALK_SPEED_M_PER_MIN = 80.0
 
 
 def _seat_prob_from_live(live: LiveBusState):
@@ -41,6 +44,27 @@ def _nearest_upstream_vehicle(states, board_seq):
     if not candidates:
         return None
     return max(candidates, key=lambda s: s.current_stop_order)
+
+
+def _distance_m(a, b):
+    if a.x is None or a.y is None or b.x is None or b.y is None:
+        return None
+    lon1, lat1, lon2, lat2 = map(radians, [a.x, a.y, b.x, b.y])
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    h = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+    return 6371000.0 * 2 * asin(sqrt(h))
+
+
+def _transfer_walk_m(a, b):
+    if a.station_id == b.station_id:
+        return 0.0
+    distance = _distance_m(a, b)
+    if distance is not None and distance <= MAX_TRANSFER_WALK_M:
+        return distance
+    if a.name and b.name and a.name.strip() == b.name.strip():
+        return distance if distance is not None else 80.0
+    return None
 
 
 class TransferJourneyDiscovery:
@@ -175,9 +199,9 @@ class TransferJourneyDiscovery:
     ) -> list[TransferPath]:
         """Build one-transfer candidates from route/stop APIs only.
 
-        This is intentionally conservative: the transfer stop must be the same
-        station_id on both routes and must be downstream of the origin on the
-        first route and upstream of the destination on the second route.
+        A transfer is accepted when the two route stops are identical or within
+        a short walking distance. This covers opposite-side and nearby-platform
+        transfers whose Seoul station IDs differ.
         """
         origin_routes = self.api.routes_by_station(origin_ars_id)[:12]
         destination_routes = self.api.routes_by_station(destination_ars_id)[:12]
@@ -202,11 +226,10 @@ class TransferJourneyDiscovery:
                 continue
 
             for origin_stop in origins:
-                downstream = {
-                    s.station_id: s
-                    for s in stops_a
+                downstream = [
+                    s for s in stops_a
                     if s.seq > origin_stop.seq and s.station_id != destination_station_id
-                }
+                ]
                 if not downstream:
                     continue
 
@@ -224,42 +247,61 @@ class TransferJourneyDiscovery:
                         continue
 
                     for destination_stop in destinations:
-                        upstream = {
-                            s.station_id: s
-                            for s in stops_b
+                        upstream = [
+                            s for s in stops_b
                             if s.seq < destination_stop.seq
                             and s.station_id != origin_station_id
-                        }
-                        shared_ids = set(downstream).intersection(upstream)
-                        if not shared_ids:
+                        ]
+                        if not upstream:
                             continue
 
-                        best_transfer_id = min(
-                            shared_ids,
-                            key=lambda sid: (
-                                downstream[sid].seq - origin_stop.seq
-                                + destination_stop.seq - upstream[sid].seq
-                            ),
-                        )
-                        transfer_a = downstream[best_transfer_id]
-                        transfer_b = upstream[best_transfer_id]
+                        best = None
+                        for transfer_a in downstream:
+                            for transfer_b in upstream:
+                                walk_m = _transfer_walk_m(transfer_a, transfer_b)
+                                if walk_m is None:
+                                    continue
+                                ride_a = max(
+                                    1.0, (transfer_a.seq - origin_stop.seq) * 1.8
+                                )
+                                ride_b = max(
+                                    1.0, (destination_stop.seq - transfer_b.seq) * 1.8
+                                )
+                                walk_min = walk_m / WALK_SPEED_M_PER_MIN
+                                score = ride_a + ride_b + walk_min
+                                if best is None or score < best[0]:
+                                    best = (
+                                        score,
+                                        transfer_a,
+                                        transfer_b,
+                                        ride_a,
+                                        ride_b,
+                                        walk_m,
+                                        walk_min,
+                                    )
+
+                        if best is None:
+                            continue
+
+                        (
+                            score,
+                            transfer_a,
+                            transfer_b,
+                            ride_a,
+                            ride_b,
+                            walk_m,
+                            walk_min,
+                        ) = best
 
                         key = (
                             route_a.route_id,
                             route_b.route_id,
-                            best_transfer_id,
+                            transfer_a.station_id,
+                            transfer_b.station_id,
                         )
                         if key in seen:
                             continue
                         seen.add(key)
-
-                        ride_a = max(
-                            1.0, (transfer_a.seq - origin_stop.seq) * 1.8
-                        )
-                        ride_b = max(
-                            1.0, (destination_stop.seq - transfer_b.seq) * 1.8
-                        )
-                        score = ride_a + ride_b
 
                         seg_a = TransferSegment(
                             route_id=route_a.route_id,
@@ -291,8 +333,8 @@ class TransferJourneyDiscovery:
                             (
                                 score,
                                 TransferPath(
-                                    distance=None,
-                                    total_time_min=None,
+                                    distance=round(walk_m, 1),
+                                    total_time_min=round(ride_a + ride_b + walk_min, 1),
                                     segments=[seg_a, seg_b],
                                 ),
                             )
@@ -330,10 +372,7 @@ class TransferJourneyDiscovery:
         except Exception as exc:
             paths = []
             diagnostics.append(
-                {
-                    "status": "pathinfo_unavailable",
-                    "detail": str(exc),
-                }
+                {"status": "pathinfo_unavailable", "detail": str(exc)}
             )
 
         if not paths and all(
@@ -447,8 +486,8 @@ class TransferJourneyDiscovery:
                     "path_distance": path.distance,
                     "path_time_source": (
                         "pathinfo_total_time"
-                        if path.total_time_min
-                        else "sum_segment_times"
+                        if path_source == "pathinfo_api" and path.total_time_min
+                        else "local_route_graph_estimate"
                     ),
                     "path_source": path_source,
                     "confidence": (
@@ -456,9 +495,7 @@ class TransferJourneyDiscovery:
                         if all(s["confidence"] != "낮음" for s in segment_details)
                         else "낮음"
                     ),
-                    "option_type": (
-                        "transfer" if transfer_count else "direct_path_api"
-                    ),
+                    "option_type": "transfer" if transfer_count else "direct_path_api",
                 }
             )
 
