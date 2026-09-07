@@ -1,0 +1,9 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+.venv/
+venv/
+runtime_data/*
+!runtime_data/.gitkeep
+seat_service.sqlite3
